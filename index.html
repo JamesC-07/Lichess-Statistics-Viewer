@@ -276,13 +276,12 @@
 
             // Normalize Score (Engine is always "Side to move", we want "White perspective")
             const isWhiteTurn = gameMoves[i].color === 'w'; // White just moved, so it's Black's turn in FEN
-            // But wait, if White just moved, the FEN is for Black to move.
             // Stockfish gives score for Black.
             // We want score for White.
             // So if White moved, and engine says +1 (Black winning), White score is -1.
             // If Black moved, and engine says +1 (White winning), White score is +1.
             
-            // Actually, simpler: Stockfish gives score for "Side to Move".
+            // simpler: Stockfish gives score for "Side to Move".
             // If FEN is Black to move, +cp means Black is winning.
             // We want White perspective.
             // So if side-to-move is 'b', we invert.
@@ -323,7 +322,7 @@
             let lastScore = 0;
             engine.addEventListener('message', handler);
             engine.postMessage('position fen ' + fen);
-            engine.postMessage('go movetime 50'); // FAST: 50ms per move
+            engine.postMessage('go movetime 100'); 
         });
     }
 
