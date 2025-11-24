@@ -256,6 +256,7 @@
         let charts = [];
         let currentUser = null;
         let currentUsername = '';
+        let cachedGames = null;
 
         usernameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -277,6 +278,7 @@
 
             charts.forEach(chart => chart.destroy());
             charts = [];
+            cachedGames = null;
 
             try {
                 const userData = await fetch(`https://lichess.org/api/user/${username}`);
@@ -395,9 +397,10 @@
             }
 
             try {
-                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=100&pgnInJson=true&opening=true`);
+                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=300&pgnInJson=true&opening=true`);
                 const gamesText = await gamesResponse.text();
                 const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
+                cachedGames = games;
 
                 if (games.length > 0) {
                     displayAdvancedStats(games, user);
@@ -407,8 +410,7 @@
             }
         }
 
-        function showByGameType(user, type) {
-            // Remove existing chart if any
+        async function showByGameType(user, type) {
             const existingChart = document.getElementById('byTypeChart');
             if (existingChart) {
                 const oldChartObj = charts.find(c => c.canvas && c.canvas.closest('#byTypeChart'));
@@ -420,36 +422,59 @@
                 existingChart.remove();
             }
 
-            const gameTypes = ['bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
-            const labels = [];
-            const data = [];
+            if (!cachedGames || cachedGames.length === 0) {
+                alert('Loading game data, please try again in a moment...');
+                return;
+            }
+
+            const typeMapping = {
+                'bullet': 'bullet',
+                'blitz': 'blitz',
+                'rapid': 'rapid',
+                'classical': 'classical',
+                'correspondence': 'correspondence'
+            };
+
+            const statsByType = {};
             
-            gameTypes.forEach(gameType => {
-                if (user.perfs && user.perfs[gameType]) {
-                    const perf = user.perfs[gameType];
-                    let value = 0;
-                    
-                    if (type === 'wins') {
-                        value = perf.win || 0;
-                    } else if (type === 'losses') {
-                        value = perf.loss || 0;
-                    } else if (type === 'draws') {
-                        value = perf.draw || 0;
-                    }
-                    
-                    if (value > 0) {
-                        labels.push(gameType.charAt(0).toUpperCase() + gameType.slice(1));
-                        data.push(value);
+            cachedGames.forEach(game => {
+                const speed = game.speed;
+                if (!typeMapping[speed]) return;
+
+                if (!statsByType[speed]) {
+                    statsByType[speed] = { wins: 0, losses: 0, draws: 0 };
+                }
+
+                const isWhite = game.players.white.user && 
+                               game.players.white.user.name.toLowerCase() === currentUsername.toLowerCase();
+
+                if (game.status === 'draw' || game.status === 'stalemate') {
+                    statsByType[speed].draws++;
+                } else if (game.winner) {
+                    if ((game.winner === 'white' && isWhite) || (game.winner === 'black' && !isWhite)) {
+                        statsByType[speed].wins++;
+                    } else {
+                        statsByType[speed].losses++;
                     }
                 }
             });
 
-            // Create a debug message
-            const debugDiv = document.createElement('div');
-            debugDiv.style.cssText = 'background: yellow; color: black; padding: 10px; margin: 10px; border-radius: 5px;';
-            debugDiv.textContent = `Debug: Found ${data.length} game types with ${type}. Data: ${JSON.stringify(data)}`;
-            chartsGrid.appendChild(debugDiv);
-            setTimeout(() => debugDiv.remove(), 5000);
+            const labels = [];
+            const data = [];
+            
+            Object.keys(statsByType).forEach(gameType => {
+                const stats = statsByType[gameType];
+                let value = 0;
+                
+                if (type === 'wins') value = stats.wins;
+                else if (type === 'losses') value = stats.losses;
+                else if (type === 'draws') value = stats.draws;
+                
+                if (value > 0) {
+                    labels.push(gameType.charAt(0).toUpperCase() + gameType.slice(1));
+                    data.push(value);
+                }
+            });
 
             if (data.length > 0) {
                 const color = type === 'wins' ? 'rgba(46, 213, 115, 0.8)' : 
@@ -466,7 +491,6 @@
                     </div>
                 `;
                 
-                // Insert after the second chart (Win/Loss/Draw)
                 const allCharts = chartsGrid.querySelectorAll('.chart-container');
                 if (allCharts.length >= 2) {
                     allCharts[1].after(container);
@@ -498,7 +522,10 @@
                         },
                         scales: {
                             y: {
-                                beginAtZero: true
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
                             }
                         }
                     }
@@ -506,7 +533,7 @@
 
                 charts.push(chart);
             } else {
-                alert('No data found for ' + type);
+                alert(`No ${type} found in the last 300 games for any game type`);
             }
         }
 
