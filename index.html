@@ -280,6 +280,8 @@
         function displayPlayerInfo(user) {
             const createdDate = new Date(user.createdAt).toLocaleDateString();
             const seenDate = user.seenAt ? new Date(user.seenAt).toLocaleDateString() : 'N/A';
+            const playTimeHours = user.playTime && user.playTime.total ? Math.round(user.playTime.total / 3600) : 0;
+            const totalGames = user.count && user.count.all ? user.count.all : 0;
 
             playerInfo.innerHTML = `
                 <div class="player-header">
@@ -294,10 +296,10 @@
                         <strong>Last seen:</strong> ${seenDate}
                     </div>
                     <div class="meta-item">
-                        <strong>Play time:</strong> ${Math.round(user.playTime.total / 3600)} hours
+                        <strong>Play time:</strong> ${playTimeHours} hours
                     </div>
                     <div class="meta-item">
-                        <strong>Games played:</strong> ${user.count.all}
+                        <strong>Games played:</strong> ${totalGames}
                     </div>
                 </div>
             `;
@@ -311,7 +313,7 @@
             const gameTypes = ['bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
             
             gameTypes.forEach(type => {
-                if (user.perfs[type]) {
+                if (user.perfs && user.perfs[type] && user.perfs[type].rating) {
                     ratingLabels.push(type.charAt(0).toUpperCase() + type.slice(1));
                     ratings.push(user.perfs[type].rating);
                 }
@@ -321,17 +323,19 @@
                 createChart('Ratings by Game Type', ratingLabels, ratings, 'bar');
             }
 
-            const gameResults = [
-                user.count.win,
-                user.count.loss,
-                user.count.draw
-            ];
-            createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut');
+            if (user.count) {
+                const gameResults = [
+                    user.count.win || 0,
+                    user.count.loss || 0,
+                    user.count.draw || 0
+                ];
+                createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut');
+            }
 
             const gameModes = [];
             const gameModeLabels = [];
             gameTypes.forEach(type => {
-                if (user.perfs[type] && user.perfs[type].games > 0) {
+                if (user.perfs && user.perfs[type] && user.perfs[type].games > 0) {
                     gameModeLabels.push(type.charAt(0).toUpperCase() + type.slice(1));
                     gameModes.push(user.perfs[type].games);
                 }
@@ -344,7 +348,7 @@
             const progressData = [];
             const progressLabels = [];
             gameTypes.forEach(type => {
-                if (user.perfs[type] && user.perfs[type].prog !== undefined) {
+                if (user.perfs && user.perfs[type] && user.perfs[type].prog !== undefined) {
                     progressLabels.push(type.charAt(0).toUpperCase() + type.slice(1));
                     progressData.push(user.perfs[type].prog);
                 }
