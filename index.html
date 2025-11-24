@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lichess Stats & Analysis Board</title>
+    <title>Lichess Stats & Analysis Suite</title>
     
     <link rel="icon" type="image/png" href="https://lichess1.org/assets/logo/lichess-favicon-32.png">
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -15,821 +14,443 @@
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0a0a0a; /* Darker background */
-            color: #e0e0e0;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
-
-        /* Header & Tabs */
+        
+        /* UI Elements */
         .header { text-align: center; margin-bottom: 20px; }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; color: white; }
-
-        .tabs {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-
-        .tab-btn {
-            padding: 12px 30px;
-            font-size: 1.1rem;
-            background: #1a1a1a;
-            color: #888;
-            border: 2px solid #333;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .tab-btn.active {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-            box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
-        }
-
-        /* View Containers */
+        .header h1 { color: white; margin-bottom: 10px; }
+        .tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 30px; }
+        .tab-btn { padding: 10px 25px; background: #1a1a1a; color: #888; border: 2px solid #333; border-radius: 6px; cursor: pointer; }
+        .tab-btn.active { background: #667eea; color: white; border-color: #667eea; }
         .view-section { display: none; }
-        .view-section.active { display: block; animation: fadeIn 0.5s; }
+        .view-section.active { display: block; }
 
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .card { background: #1a1a1a; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        input, textarea { flex: 1; padding: 12px; background: #0a0a0a; border: 1px solid #333; color: white; border-radius: 6px; }
+        button { padding: 12px 25px; background: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
 
-        /* Shared Styles */
-        .card {
-            background: #1a1a1a;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            margin-bottom: 20px;
-        }
-
-        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input, textarea {
-            flex: 1;
-            padding: 15px;
-            font-size: 1rem;
-            border: 2px solid #333;
-            border-radius: 8px;
-            outline: none;
-            background: #0a0a0a;
-            color: white;
-            font-family: monospace;
-        }
-        input:focus, textarea:focus { border-color: #667eea; }
+        /* Analysis Layout */
+        .analysis-grid { display: grid; grid-template-columns: minmax(300px, 600px) 1fr; gap: 20px; }
+        .board-wrapper { position: relative; }
+        .board-container { display: flex; }
+        #board { width: 100%; }
         
-        button {
-            padding: 15px 30px;
-            font-size: 1rem;
-            background: white;
-            color: black;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 700;
-            transition: transform 0.2s;
-        }
-        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255,255,255,0.2); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* --- Analysis Specific Styles --- */
-        .analysis-grid {
-            display: grid;
-            grid-template-columns: minmax(300px, 600px) 1fr;
-            gap: 20px;
-            align-items: start;
-        }
-
-        .board-container {
-            position: relative;
-            width: 100%;
-        }
-
-        #board {
-            width: 100%;
-            border: 5px solid #333;
-            border-radius: 5px;
-        }
-
-        .eval-bar-container {
-            position: absolute;
-            left: -25px;
-            top: 0;
-            bottom: 0;
-            width: 15px;
-            background: #333;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .eval-bar-fill {
-            width: 100%;
-            background: white; /* White advantage */
-            height: 50%;
-            position: absolute;
-            bottom: 0;
-            transition: height 0.5s ease;
-        }
-        .eval-bar-bg {
-            width: 100%;
-            height: 100%;
-            background: #444; /* Black advantage */
-        }
-
-        .analysis-stats {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .stat-box {
-            background: #252525;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-        }
-
-        .stat-box h4 { color: #888; font-size: 0.9rem; margin-bottom: 5px; }
-        .stat-box .value { font-size: 1.5rem; font-weight: bold; color: white; }
-        .stat-box .sub { font-size: 0.8rem; color: #666; }
-
-        .accuracy-meter {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .acc-player { text-align: center; width: 45%; }
-
-        .move-list {
-            height: 200px;
-            overflow-y: auto;
-            background: #0a0a0a;
-            border-radius: 8px;
-            padding: 10px;
-            font-family: monospace;
-            display: grid;
-            grid-template-columns: 1fr 2fr 2fr;
-            gap: 5px;
-        }
-        .move-row { padding: 5px; border-bottom: 1px solid #222; cursor: pointer; display:contents;}
-        .move-row div { padding: 3px; }
-        .move-row:hover div { background: #333; }
-        .move-row.active div { background: #4a5568; color: white; }
+        .eval-bar-container { width: 15px; background: #333; margin-right: 5px; position: relative; border-radius: 3px; overflow: hidden; }
+        .eval-bar-fill { width: 100%; background: #eee; position: absolute; bottom: 0; height: 50%; transition: height 0.3s; }
         
-        .pgn-input-area { display: flex; flex-direction: column; gap: 10px; }
-
-        /* --- Existing Stats Styles --- */
-        .player-info {
-            background: white;
-            color: black;
-            padding: 25px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-        }
-        .player-header { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
-        .player-header h2 { font-size: 2rem; color: #333; }
-        .player-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .meta-item { padding: 10px; background: #f8f9fa; border-radius: 8px; color: #333; }
-        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
-        .chart-container { background: white; padding: 20px; border-radius: 15px; }
-        .chart-container h3 { color: #333; margin-bottom: 15px; text-align: center; }
-        .chart-wrapper { position: relative; height: 300px; }
-
-        /* Utility */
+        .move-list { height: 300px; overflow-y: auto; background: #0a0a0a; border: 1px solid #333; padding: 5px; font-family: monospace; }
+        .move-row { display: flex; padding: 4px; border-bottom: 1px solid #222; cursor: pointer; }
+        .move-row:hover { background: #222; }
+        .move-row.active { background: #2c3e50; color: #ecf0f1; }
+        .move-row div { flex: 1; }
+        
+        .stat-box { background: #222; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; }
+        
+        /* Utilities */
         .hidden { display: none !important; }
-        .error { background: #ff4757; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
-        .loading-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.9); display: none;
-            align-items: center; justify-content: center; z-index: 1000;
-        }
-        .progress-box { width: 300px; text-align: center; color: white; }
-        .progress-bar { width: 100%; height: 10px; background: #333; border-radius: 5px; margin: 15px 0; overflow: hidden;}
+        .error { background: #e74c3c; color: white; padding: 10px; border-radius: 6px; display: none; margin-bottom: 15px; }
+        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 1000; flex-direction: column; }
+        .progress-bar { width: 300px; height: 8px; background: #333; margin-top: 15px; border-radius: 4px; overflow: hidden; }
         .progress-fill { height: 100%; width: 0%; background: #667eea; transition: width 0.2s; }
-
-        @media (max-width: 900px) {
-            .analysis-grid { grid-template-columns: 1fr; }
-        }
+        
+        @media (max-width: 900px) { .analysis-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="header">
-            <h1>Lichess Suite</h1>
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('stats')">Player Stats</button>
-                <button class="tab-btn" onclick="switchTab('analysis')">Game Analysis</button>
+<div class="container">
+    <div class="header">
+        <h1>Lichess Suite</h1>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('stats')">Player Stats</button>
+            <button class="tab-btn" onclick="switchTab('analysis')">Game Analysis</button>
+        </div>
+    </div>
+
+    <div class="error" id="globalError"></div>
+
+    <div id="statsView" class="view-section active">
+        <div class="card">
+            <div class="input-group">
+                <input type="text" id="usernameInput" placeholder="Enter Username (e.g. MagnusCarlsen)">
+                <button onclick="fetchPlayerStats()">Search</button>
             </div>
         </div>
+        <div id="playerData" class="hidden">
+            <div class="card" id="playerInfo"></div>
+            <div class="card"><canvas id="ratingChart" height="300"></canvas></div>
+        </div>
+    </div>
 
-        <div class="error" id="globalError"></div>
-
-        <div id="statsView" class="view-section active">
-            <div class="card">
-                <div class="input-group">
-                    <input type="text" id="usernameInput" placeholder="Enter Lichess username (e.g. MagnusCarlsen)">
-                    <button onclick="fetchPlayerStats()">Search Profile</button>
-                </div>
+    <div id="analysisView" class="view-section">
+        <div class="card">
+            <div class="input-group">
+                <input type="text" id="gameUrlInput" placeholder="Game URL or ID">
+                <button onclick="loadFromUrl()">Load URL</button>
             </div>
-            
-            <div id="playerData" class="hidden">
-                <div class="player-info" id="playerInfo"></div>
-                <div class="charts-grid" id="chartsGrid"></div>
-            </div>
+            <textarea id="pgnInput" rows="3" placeholder="Or paste PGN..."></textarea>
+            <button onclick="startAnalysis()" style="width:100%; margin-top:10px; background:#667eea; color:white;">Analyze Game</button>
         </div>
 
-        <div id="analysisView" class="view-section">
-            <div class="card">
-                <div class="pgn-input-area">
-                    <div class="input-group">
-                        <input type="text" id="gameUrlInput" placeholder="Paste Lichess Game URL or ID">
-                        <button onclick="loadFromUrl()">Load URL</button>
+        <div id="analysisDashboard" class="hidden">
+            <div class="analysis-grid">
+                <div class="board-wrapper">
+                    <div class="board-container">
+                        <div class="eval-bar-container"><div class="eval-bar-fill" id="evalBarFill"></div></div>
+                        <div id="board"></div>
                     </div>
-                    <textarea id="pgnInput" rows="3" placeholder="Or paste PGN text here..."></textarea>
-                    <button onclick="startAnalysis()" style="width: 100%; background: #667eea; color: white;">Analyze Game</button>
+                    <div style="margin-top:10px; display:flex; gap:5px; justify-content:center;">
+                        <button onclick="navMove('start')">|&lt;</button>
+                        <button onclick="navMove('prev')">&lt;</button>
+                        <button onclick="navMove('next')">&gt;</button>
+                        <button onclick="navMove('end')">&gt;|</button>
+                        <button onclick="board.flip()">Flip</button>
+                    </div>
                 </div>
-            </div>
 
-            <div id="analysisDashboard" class="hidden">
-                <div class="analysis-grid">
-                    <div class="board-wrapper">
-                        <div class="board-container">
-                            <div class="eval-bar-container">
-                                <div class="eval-bar-bg">
-                                    <div class="eval-bar-fill" id="evalBarFill" style="height: 50%;"></div>
-                                </div>
-                            </div>
-                            <div id="board"></div>
-                        </div>
-                        <div style="margin-top: 10px; display: flex; justify-content: center; gap: 10px;">
-                            <button onclick="navMove('start')">|&lt;</button>
-                            <button onclick="navMove('prev')">&lt;</button>
-                            <button onclick="navMove('next')">&gt;</button>
-                            <button onclick="navMove('end')">&gt;|</button>
-                            <button onclick="flipBoard()">Flip</button>
+                <div>
+                    <div class="stat-box">
+                        <h4>Accuracy</h4>
+                        <div style="display:flex; justify-content:space-around; margin-top:10px;">
+                            <div>White: <div class="stat-value" id="accWhite">-</div></div>
+                            <div>Black: <div class="stat-value" id="accBlack">-</div></div>
                         </div>
                     </div>
-
-                    <div class="analysis-stats">
-                        <div class="stat-box">
-                            <div class="accuracy-meter">
-                                <div class="acc-player">
-                                    <h4>White Accuracy</h4>
-                                    <div class="value" id="accWhite">-</div>
-                                </div>
-                                <div class="acc-player">
-                                    <h4>Black Accuracy</h4>
-                                    <div class="value" id="accBlack">-</div>
-                                </div>
-                            </div>
-                            <div style="display: flex; justify-content: space-around; font-size: 0.8rem; color: #888; border-top: 1px solid #333; padding-top: 10px;">
-                                <span>ACPL: <b id="acplWhite" style="color:#fff">-</b></span>
-                                <span>ACPL: <b id="acplBlack" style="color:#fff">-</b></span>
-                            </div>
-                        </div>
-
-                        <div class="stat-box">
-                            <h4>Move Classification</h4>
-                            <canvas id="moveQualityChart" height="150"></canvas>
-                        </div>
-
-                        <div class="card" style="padding: 10px;">
-                            <h4>Evaluation Graph</h4>
-                            <div class="chart-wrapper" style="height: 150px;">
-                                <canvas id="evalChart"></canvas>
-                            </div>
-                        </div>
-
-                        <div class="move-list" id="moveList">
-                            </div>
+                    <div class="move-list" id="moveList"></div>
+                    <div class="card" style="margin-top:20px; height:200px;">
+                        <canvas id="evalChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="loading-overlay" id="loader">
-        <div class="progress-box">
-            <h3 id="loadingText">Processing...</h3>
-            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-            <p id="loadingSubtext">Please wait</p>
-        </div>
-    </div>
+<div class="loading-overlay" id="loader">
+    <h3 id="loadingText">Processing...</h3>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <button onclick="stopAnalysis()" style="margin-top:20px; background:#e74c3c; color:white; padding:5px 15px; font-size:0.8rem;">Cancel</button>
+</div>
 
-    <script>
-        // --- GLOBAL VARIABLES ---
-        let chess = null;
-        let board = null;
-        let engine = null;
-        let currentMoveIndex = -1;
-        let gameMoves = []; // Array of {fen, san, eval, cp}
-        let analysisCharts = {};
-        let isAnalyzing = false;
+<script>
+    // --- State & Globals ---
+    let chess = new Chess();
+    let board = null;
+    let engine = null;
+    let currentAnalysisId = 0; // Prevents race conditions
+    let gameMoves = [];
+    let currentMoveIndex = -1;
+    let chartInstance = null;
+    let statChartInstance = null;
 
-        // Initialize Chess.js
-        // Note: Chess.js API varies slightly by version. We use a constructor here.
+    // --- Tab Handling ---
+    function switchTab(tab) {
+        document.querySelectorAll('.view-section').forEach(e => e.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
+        document.getElementById(tab + 'View').classList.add('active');
+        event.target.classList.add('active'); // Assumes button click
         
-        // --- TAB SWITCHING ---
-        function switchTab(tabName) {
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        if(tab === 'analysis' && !board) {
+            setTimeout(() => {
+                board = Chessboard('board', {
+                    position: 'start',
+                    draggable: false,
+                    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+                });
+                window.onresize = board.resize;
+            }, 100);
+        }
+    }
+
+    // --- Stats Logic ---
+    async function fetchPlayerStats() {
+        const user = document.getElementById('usernameInput').value.trim();
+        if(!user) return alert('Enter username');
+        
+        try {
+            const res = await fetch(`https://lichess.org/api/user/${user}`);
+            if(!res.ok) throw new Error('User not found');
+            const data = await res.json();
             
-            document.getElementById(tabName + 'View').classList.add('active');
-            // Find button with onclick containing the tab name
-            const btns = document.getElementsByTagName('button');
-            for(let btn of btns) {
-                if(btn.getAttribute('onclick') === `switchTab('${tabName}')`) {
-                    btn.classList.add('active');
-                }
-            }
+            document.getElementById('playerData').classList.remove('hidden');
+            document.getElementById('playerInfo').innerHTML = `
+                <h2>${data.username}</h2>
+                <p>Games: ${data.count.all} | Wins: ${data.count.win}</p>
+            `;
 
-            if (tabName === 'analysis' && !board) {
-                initBoard();
-            }
-        }
-
-        function showError(msg) {
-            const el = document.getElementById('globalError');
-            el.innerText = msg;
-            el.style.display = 'block';
-            setTimeout(() => el.style.display = 'none', 5000);
-        }
-
-        function showLoader(text) {
-            document.getElementById('loader').style.display = 'flex';
-            document.getElementById('loadingText').innerText = text;
-            document.getElementById('progressFill').style.width = '0%';
-        }
-
-        function updateLoader(percent, text) {
-            document.getElementById('progressFill').style.width = percent + '%';
-            if(text) document.getElementById('loadingSubtext').innerText = text;
-        }
-
-        function hideLoader() {
-            document.getElementById('loader').style.display = 'none';
-        }
-
-        // --- PLAYER STATS LOGIC (From original) ---
-        let statsCharts = [];
-
-        async function fetchPlayerStats() {
-            const username = document.getElementById('usernameInput').value.trim();
-            if (!username) return showError('Please enter a username');
-
-            showLoader('Fetching User Data...');
-            
-            // Clear old charts
-            statsCharts.forEach(c => c.destroy());
-            statsCharts = [];
-            document.getElementById('chartsGrid').innerHTML = '';
-
-            try {
-                const res = await fetch(`https://lichess.org/api/user/${username}`);
-                if (!res.ok) throw new Error('User not found');
-                const user = await res.json();
-
-                // Render Info
-                document.getElementById('playerData').classList.remove('hidden');
-                const created = new Date(user.createdAt).toLocaleDateString();
-                const time = user.playTime ? Math.round(user.playTime.total / 3600) : 0;
-                
-                document.getElementById('playerInfo').innerHTML = `
-                    <div class="player-header">
-                        <h2>${user.username}</h2>
-                        ${user.title ? `<span style="background:#ffd700;padding:2px 8px;border-radius:4px;font-size:1rem">${user.title}</span>` : ''}
-                    </div>
-                    <div class="player-meta">
-                        <div class="meta-item"><strong>Games:</strong> ${user.count.all}</div>
-                        <div class="meta-item"><strong>Wins:</strong> ${user.count.win}</div>
-                        <div class="meta-item"><strong>Hours:</strong> ${time}h</div>
-                        <div class="meta-item"><strong>Joined:</strong> ${created}</div>
-                    </div>
-                `;
-
-                // Render Charts
-                const perfKeys = ['bullet', 'blitz', 'rapid', 'classical'];
-                const ratings = perfKeys.map(k => user.perfs[k]?.rating || 0);
-                
-                createStatsChart('Rating Profile', 'bar', perfKeys.map(k=>k.toUpperCase()), ratings, document.getElementById('chartsGrid'));
-                
-                const results = [user.count.win, user.count.loss, user.count.draw];
-                createStatsChart('Game Results', 'doughnut', ['Win', 'Loss', 'Draw'], results, document.getElementById('chartsGrid'));
-
-                // Fetch Games for Openings (Simplified for speed)
-                updateLoader(50, 'Fetching recent games...');
-                const gamesRes = await fetch(`https://lichess.org/api/games/user/${username}?max=50&opening=true`);
-                const gamesText = await gamesRes.text();
-                // Simple opening parsing could go here, skipping for brevity to focus on Analysis Engine
-                
-            } catch (e) {
-                showError(e.message);
-            } finally {
-                hideLoader();
-            }
-        }
-
-        function createStatsChart(title, type, labels, data, container) {
-            const div = document.createElement('div');
-            div.className = 'chart-container';
-            div.innerHTML = `<h3>${title}</h3><div class="chart-wrapper"><canvas></canvas></div>`;
-            container.appendChild(div);
-            
-            const ctx = div.querySelector('canvas').getContext('2d');
-            statsCharts.push(new Chart(ctx, {
-                type: type,
+            // Chart
+            if(statChartInstance) statChartInstance.destroy();
+            const ctx = document.getElementById('ratingChart').getContext('2d');
+            const variants = ['bullet', 'blitz', 'rapid', 'classical'];
+            statChartInstance = new Chart(ctx, {
+                type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: variants,
                     datasets: [{
-                        data: data,
-                        backgroundColor: ['#667eea', '#764ba2', '#ff4757', '#2ed573']
+                        label: 'Rating',
+                        data: variants.map(v => data.perfs[v]?.rating || 0),
+                        backgroundColor: '#667eea'
                     }]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
-            }));
-        }
-
-
-        // --- ANALYSIS & ENGINE LOGIC ---
-
-        function initBoard() {
-            board = Chessboard('board', {
-                draggable: false, // Analysis mode is read-only for simplicity
-                position: 'start',
-                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
             });
-            window.onresize = board.resize;
+        } catch(e) {
+            document.getElementById('globalError').innerText = e.message;
+            document.getElementById('globalError').style.display = 'block';
         }
+    }
 
-        async function loadFromUrl() {
-            let input = document.getElementById('gameUrlInput').value;
-            // Extract ID (e.g., from https://lichess.org/abc123XYZ)
-            const match = input.match(/lichess\.org\/([a-zA-Z0-9]{8})/);
-            const id = match ? match[1] : input;
-            
-            if(id.length < 8) return showError('Invalid Game ID');
-
-            showLoader('Fetching PGN...');
-            try {
-                const res = await fetch(`https://lichess.org/game/export/${id}?evals=false&clocks=false`);
-                if(!res.ok) throw new Error('Could not fetch game');
-                const pgn = await res.text();
-                document.getElementById('pgnInput').value = pgn;
-                hideLoader();
-                startAnalysis();
-            } catch(e) {
-                showError(e.message);
-                hideLoader();
-            }
-        }
-
-        async function startAnalysis() {
-            const pgn = document.getElementById('pgnInput').value;
-            if(!pgn.trim()) return showError('Please enter PGN or load a game');
-
-            showLoader('Initializing Engine...');
-            
-            // 1. Parse Game
-            chess = new Chess();
-            if (!chess.load_pgn(pgn)) {
-                hideLoader();
-                return showError('Invalid PGN');
-            }
-
-            // 2. Reset State
-            gameMoves = [];
-            const history = chess.history({ verbose: true });
-            let tempChess = new Chess();
-            
-            // Build move array
-            for(let move of history) {
-                tempChess.move(move);
-                gameMoves.push({
-                    fen: tempChess.fen(),
-                    san: move.san,
-                    color: move.color, // w or b
-                    from: move.from,
-                    to: move.to,
-                    eval: 0, // Centipawns
-                    mate: null
-                });
-            }
-
-            document.getElementById('analysisDashboard').classList.remove('hidden');
-            
-            // 3. Init Stockfish (Using a Blob to avoid CORS/File issues if possible, otherwise CDN)
-            // We will use a raw generic worker script for stockfish.js
-            if(engine) engine.terminate();
-            
-            const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
-            
-            try {
-                const response = await fetch(stockfishUrl);
-                const blob = await response.blob();
-                engine = new Worker(window.URL.createObjectURL(blob));
-            } catch (e) {
-                // Fallback for direct loading
-                engine = new Worker(stockfishUrl);
-            }
-
-            engine.onmessage = function(event) {
-                handleEngineMessage(event.data);
-            };
-            
-            engine.postMessage('uci');
-            engine.postMessage('isready');
-
-            // 4. Analyze Loop
-            isAnalyzing = true;
-            await analyzeMoves();
-            
-            isAnalyzing = false;
-            calculateStats();
-            renderAnalysisUI();
+    // --- Analysis Logic ---
+    async function loadFromUrl() {
+        const input = document.getElementById('gameUrlInput').value;
+        const id = input.match(/lichess\.org\/([a-zA-Z0-9]{8})/) || [null, input];
+        if(!id[1]) return alert('Invalid ID');
+        
+        showLoader('Downloading Game...');
+        try {
+            const res = await fetch(`https://lichess.org/game/export/${id[1]}?evals=false&clocks=false`);
+            if(!res.ok) throw new Error('Failed to load');
+            const pgn = await res.text();
+            document.getElementById('pgnInput').value = pgn;
             hideLoader();
-            navMove('start'); // Go to start
+            startAnalysis(); // Auto-start
+        } catch(e) {
+            hideLoader();
+            alert(e.message);
         }
+    }
 
-        let pendingResolve = null;
+    async function startAnalysis() {
+        const pgn = document.getElementById('pgnInput').value;
+        if(!pgn.trim()) return;
 
-        function handleEngineMessage(line) {
-            // Parse "info depth 10 ... score cp 50"
-            if (line.indexOf('score cp') !== -1 || line.indexOf('score mate') !== -1) {
-                // Store latest score in a temp variable, but wait for 'bestmove' to confirm
-            }
-        }
-
-        // Simple promise wrapper to analyze a position
-        function getEvaluation(fen) {
-            return new Promise((resolve) => {
-                let bestScore = 0;
-                let mate = null;
-
-                const handler = (e) => {
-                    const line = e.data;
-                    
-                    if (line.startsWith('info') && line.includes('score')) {
-                        const parts = line.split(' ');
-                        // score cp 100 or score mate 5
-                        let scoreIdx = parts.indexOf('score');
-                        let type = parts[scoreIdx + 1]; // cp or mate
-                        let val = parseInt(parts[scoreIdx + 2]);
-
-                        if(type === 'mate') mate = val;
-                        else bestScore = val;
-                    }
-
-                    if (line.startsWith('bestmove')) {
-                        engine.removeEventListener('message', handler);
-                        resolve({ cp: bestScore, mate: mate });
-                    }
-                };
-
-                engine.addEventListener('message', handler);
-                engine.postMessage('position fen ' + fen);
-                engine.postMessage('go depth 12'); // Depth 12 is a good balance for browser JS
-            });
-        }
-
-        async function analyzeMoves() {
-            const total = gameMoves.length;
-            // Start with eval 0 (start position)
-            let prevEval = 0;
-
-            for (let i = 0; i < total; i++) {
-                updateLoader(Math.round((i/total)*100), `Analyzing move ${i+1}/${total}`);
-                
-                const result = await getEvaluation(gameMoves[i].fen);
-                
-                // Normalize score: Engine always gives score from side to move perspective
-                // We want score from White's perspective for graphs
-                let score = result.cp;
-                if(result.mate !== null) {
-                    // Assign high values for mate
-                    score = result.mate > 0 ? 2000 - (result.mate * 10) : -2000 - (result.mate * 10);
-                }
-                
-                // If it was Black's turn to move (resulting in this FEN), the engine evaluated Black's advantage.
-                // However, FEN stores "side to move next". 
-                // Logic: We evaluated the position AFTER the move.
-                // If `gameMoves[i].color` is 'w', white just moved. The FEN has 'b' to move.
-                // Stockfish eval of that FEN is for Black.
-                // So if Stockfish says +100 (Black is winning), White's score is -100.
-                
-                if (gameMoves[i].color === 'w') {
-                    // White just moved. Engine evaluates for Black.
-                    gameMoves[i].eval = -score; 
-                } else {
-                    // Black just moved. Engine evaluates for White.
-                    gameMoves[i].eval = score;
-                }
-                
-                // Cap extremely high values for graphs
-                if(gameMoves[i].eval > 2000) gameMoves[i].eval = 2000;
-                if(gameMoves[i].eval < -2000) gameMoves[i].eval = -2000;
-            }
-        }
-
-        // --- STATISTICS CALCULATION ---
-        let whiteStats = { acc: 0, acpl: 0, blunders: 0, mistakes: 0 };
-        let blackStats = { acc: 0, acpl: 0, blunders: 0, mistakes: 0 };
-
-        function calculateStats() {
-            let wCpLoss = 0, bCpLoss = 0;
-            let wMoves = 0, bMoves = 0;
-            
-            // Win% Chance formula = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)
-            const winPct = (cp) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
-
-            let prevEval = 0; // Start position is 0.0
-
-            gameMoves.forEach((m, i) => {
-                const currentEval = m.eval;
-                
-                // Calculate Loss
-                // If White moved, did eval drop? (Previous - Current)
-                // If Black moved, did eval rise? (Current - Previous) [Since eval is White-centric]
-                
-                let loss = 0;
-                if (m.color === 'w') {
-                    loss = prevEval - currentEval;
-                    if (loss < 0) loss = 0; // Improved position is 0 loss
-                    wCpLoss += loss;
-                    wMoves++;
-                    
-                    // Categorize
-                    if(loss >= 300) whiteStats.blunders++;
-                    else if(loss >= 100) whiteStats.mistakes++;
-                } else {
-                    loss = currentEval - prevEval;
-                    if (loss < 0) loss = 0;
-                    bCpLoss += loss;
-                    bMoves++;
-
-                    if(loss >= 300) blackStats.blunders++;
-                    else if(loss >= 100) blackStats.mistakes++;
-                }
-                
-                prevEval = currentEval;
-            });
-
-            // ACPL
-            whiteStats.acpl = wMoves ? Math.round(wCpLoss / wMoves) : 0;
-            blackStats.acpl = bMoves ? Math.round(bCpLoss / bMoves) : 0;
-
-            // Accuracy Formula: 103.1668 * exp(-0.04354 * (ACPL / 100)) - 3.1669 (Approx adaptation)
-            // Using Lichess-like formula roughly:
-            const calcAcc = (acpl) => {
-                const val = 103.1668 * Math.exp(-0.04354 * (acpl/20)) - 3.1669; // Adjusted divisor for scale
-                return Math.min(99, Math.max(0, Math.round(val)));
-            }
-
-            whiteStats.acc = calcAcc(whiteStats.acpl);
-            blackStats.acc = calcAcc(blackStats.acpl);
-        }
-
-        // --- RENDERING ANALYSIS ---
-
-        function renderAnalysisUI() {
-            // Update Stats Text
-            document.getElementById('accWhite').innerText = whiteStats.acc + '%';
-            document.getElementById('accBlack').innerText = blackStats.acc + '%';
-            document.getElementById('acplWhite').innerText = whiteStats.acpl;
-            document.getElementById('acplBlack').innerText = blackStats.acpl;
-
-            // Move List
-            const list = document.getElementById('moveList');
-            list.innerHTML = '<div style="font-weight:bold; color:#667eea">#</div><div style="font-weight:bold">White</div><div style="font-weight:bold">Black</div>';
-            
-            let moveHtml = '';
-            for(let i=0; i<gameMoves.length; i+=2) {
-                const num = (i/2) + 1;
-                const wMove = gameMoves[i];
-                const bMove = gameMoves[i+1];
-                
-                moveHtml += `
-                    <div class="move-row">
-                        <div>${num}.</div>
-                        <div onclick="jumpTo(${i})" id="move-${i}">${wMove.san} <small style="color:${getColor(wMove.eval)}">(${wMove.eval/100})</small></div>
-                        ${bMove ? `<div onclick="jumpTo(${i+1})" id="move-${i+1}">${bMove.san} <small style="color:${getColor(bMove.eval)}">(${bMove.eval/100})</small></div>` : '<div></div>'}
-                    </div>
-                `;
-            }
-            list.innerHTML += moveHtml;
-
-            // Render Charts
-            if(analysisCharts.eval) analysisCharts.eval.destroy();
-            if(analysisCharts.pie) analysisCharts.pie.destroy();
-
-            const ctxEval = document.getElementById('evalChart').getContext('2d');
-            analysisCharts.eval = new Chart(ctxEval, {
-                type: 'line',
-                data: {
-                    labels: gameMoves.map((_, i) => i+1),
-                    datasets: [{
-                        label: 'Evaluation (CP)',
-                        data: gameMoves.map(m => m.eval / 100),
-                        borderColor: '#667eea',
-                        tension: 0.4,
-                        pointRadius: 0,
-                        fill: true,
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { x: { display: false }, y: { grid: { color: '#333' } } },
-                    plugins: { legend: { display: false } }
-                }
-            });
-
-            const ctxPie = document.getElementById('moveQualityChart').getContext('2d');
-            analysisCharts.pie = new Chart(ctxPie, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Blunders', 'Mistakes', 'Good'],
-                    datasets: [{
-                        data: [
-                            whiteStats.blunders + blackStats.blunders,
-                            whiteStats.mistakes + blackStats.mistakes,
-                            gameMoves.length - (whiteStats.blunders + blackStats.blunders + whiteStats.mistakes + blackStats.mistakes)
-                        ],
-                        backgroundColor: ['#ff4757', '#ffa502', '#2ed573'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
-            });
-        }
-
-        function getColor(cp) {
-            if(cp > 100) return '#2ed573'; // Green
-            if(cp < -100) return '#ff4757'; // Red
-            return '#888';
-        }
-
-        // --- NAVIGATION ---
-        function jumpTo(index) {
-            currentMoveIndex = index;
-            updateBoardState();
-        }
-
-        function navMove(dir) {
-            if(gameMoves.length === 0) return;
-            
-            if (dir === 'start') currentMoveIndex = -1;
-            else if (dir === 'end') currentMoveIndex = gameMoves.length - 1;
-            else if (dir === 'prev') currentMoveIndex = Math.max(-1, currentMoveIndex - 1);
-            else if (dir === 'next') currentMoveIndex = Math.min(gameMoves.length - 1, currentMoveIndex + 1);
-            
-            updateBoardState();
-        }
-
-        function updateBoardState() {
-            // Highlight Move List
-            document.querySelectorAll('.move-row div').forEach(el => el.parentElement.classList.remove('active'));
-            if(currentMoveIndex >= 0) {
-                const el = document.getElementById(`move-${currentMoveIndex}`);
-                if(el) el.parentElement.classList.add('active');
-                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-
-            // Update Board
-            const fen = currentMoveIndex === -1 ? 'start' : gameMoves[currentMoveIndex].fen;
-            board.position(fen);
-
-            // Update Eval Bar
-            if(currentMoveIndex >= 0) {
-                const score = gameMoves[currentMoveIndex].eval;
-                // Clamp score between -500 and 500 for the bar visual
-                let percent = 50 + (score / 10); // 100cp = 10% shift
-                percent = Math.max(5, Math.min(95, percent));
-                document.getElementById('evalBarFill').style.height = percent + '%';
-            } else {
-                document.getElementById('evalBarFill').style.height = '50%';
-            }
-        }
-
-        function flipBoard() {
-            board.flip();
-        }
-
-        // Keyboard nav
-        document.addEventListener('keydown', (e) => {
-            if(document.getElementById('analysisView').classList.contains('active')) {
-                if(e.key === 'ArrowLeft') navMove('prev');
-                if(e.key === 'ArrowRight') navMove('next');
-            }
+        // Reset
+        currentAnalysisId++; // Invalidate previous runs
+        const myId = currentAnalysisId;
+        
+        if(!chess.load_pgn(pgn)) return alert('Invalid PGN');
+        
+        gameMoves = [];
+        let tempChess = new Chess();
+        const history = chess.history({verbose: true});
+        
+        // Build move list
+        gameMoves = history.map(m => {
+            tempChess.move(m);
+            return { fen: tempChess.fen(), san: m.san, color: m.color, eval: 0 };
         });
 
-    </script>
+        if(gameMoves.length === 0) return alert('No moves found');
+
+        showLoader('Initializing Stockfish...');
+        document.getElementById('analysisDashboard').classList.remove('hidden');
+
+        // Init Worker
+        if(engine) engine.terminate();
+        const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
+        
+        try {
+            // Try fetching for Blob (better for some browsers)
+            const req = await fetch(stockfishUrl);
+            const blob = await req.blob();
+            engine = new Worker(URL.createObjectURL(blob));
+        } catch(e) {
+            // Fallback
+            engine = new Worker(stockfishUrl);
+        }
+
+        engine.postMessage('uci');
+
+        // Run Analysis Loop
+        for(let i=0; i < gameMoves.length; i++) {
+            if(myId !== currentAnalysisId) return; // Stop if restarted
+            
+            updateLoader(Math.round((i / gameMoves.length) * 100), `Analyzing move ${i+1}/${gameMoves.length}`);
+            
+            const score = await getMoveScore(gameMoves[i].fen, myId);
+            if(myId !== currentAnalysisId) return;
+
+            // Normalize Score (Engine is always "Side to move", we want "White perspective")
+            const isWhiteTurn = gameMoves[i].color === 'w'; // White just moved, so it's Black's turn in FEN
+            // But wait, if White just moved, the FEN is for Black to move.
+            // Stockfish gives score for Black.
+            // We want score for White.
+            // So if White moved, and engine says +1 (Black winning), White score is -1.
+            // If Black moved, and engine says +1 (White winning), White score is +1.
+            
+            // Actually, simpler: Stockfish gives score for "Side to Move".
+            // If FEN is Black to move, +cp means Black is winning.
+            // We want White perspective.
+            // So if side-to-move is 'b', we invert.
+            const sideToMove = gameMoves[i].fen.split(' ')[1];
+            gameMoves[i].eval = (sideToMove === 'w') ? score : -score;
+        }
+
+        calcStats();
+        renderUI();
+        hideLoader();
+        navMove('start');
+    }
+
+    function getMoveScore(fen, runId) {
+        return new Promise(resolve => {
+            const handler = (e) => {
+                if(runId !== currentAnalysisId) {
+                    engine.removeEventListener('message', handler);
+                    return;
+                }
+                const line = e.data;
+                if(line.startsWith('bestmove')) {
+                    engine.removeEventListener('message', handler);
+                    resolve(lastScore);
+                }
+                if(line.includes('score cp')) {
+                    const parts = line.split(' ');
+                    const idx = parts.indexOf('cp');
+                    lastScore = parseInt(parts[idx + 1]);
+                } else if(line.includes('score mate')) {
+                    const parts = line.split(' ');
+                    const idx = parts.indexOf('mate');
+                    const mate = parseInt(parts[idx + 1]);
+                    lastScore = mate > 0 ? 2000 : -2000;
+                }
+            };
+            
+            let lastScore = 0;
+            engine.addEventListener('message', handler);
+            engine.postMessage('position fen ' + fen);
+            engine.postMessage('go movetime 50'); // FAST: 50ms per move
+        });
+    }
+
+    function calcStats() {
+        let wAcc = 0, bAcc = 0, wMoves = 0, bMoves = 0;
+        let prevEval = 0;
+        
+        gameMoves.forEach(m => {
+            let diff = m.eval - prevEval;
+            // If White moved, positive diff is good.
+            // If Black moved, negative diff is good (eval goes down).
+            
+            if(m.color === 'w') {
+                // White moved. Did eval go up?
+                // Actually, simple accuracy is usually based on "Centipawn Loss" (How much worse than best move)
+                // Since we aren't calculating "Best Move" separately, we just check if eval dropped.
+                // If eval dropped (e.g. 0.5 -> 0.0), White lost 50cp.
+                let loss = prevEval - m.eval;
+                if(loss < 0) loss = 0;
+                wAcc += Math.max(0, 100 - (loss / 2)); // Simple rough formula
+                wMoves++;
+            } else {
+                // Black moved. Did eval go UP? (e.g. 0.0 -> 0.5 means Black worsened position)
+                let loss = m.eval - prevEval;
+                if(loss < 0) loss = 0;
+                bAcc += Math.max(0, 100 - (loss / 2));
+                bMoves++;
+            }
+            prevEval = m.eval;
+        });
+        
+        document.getElementById('accWhite').innerText = wMoves ? Math.round(wAcc / wMoves) + '%' : '-';
+        document.getElementById('accBlack').innerText = bMoves ? Math.round(bAcc / bMoves) + '%' : '-';
+    }
+
+    function renderUI() {
+        // Move List
+        const list = document.getElementById('moveList');
+        list.innerHTML = '';
+        
+        let html = '';
+        for(let i=0; i<gameMoves.length; i+=2) {
+            const w = gameMoves[i];
+            const b = gameMoves[i+1];
+            html += `
+                <div class="move-row" id="row-${i/2}">
+                    <div style="flex:0 0 30px; color:#666">${(i/2)+1}.</div>
+                    <div onclick="navMove(${i})">${w.san} <small>${w.eval/100}</small></div>
+                    ${b ? `<div onclick="navMove(${i+1})">${b.san} <small>${b.eval/100}</small></div>` : '<div></div>'}
+                </div>
+            `;
+        }
+        list.innerHTML = html;
+
+        // Chart
+        if(chartInstance) chartInstance.destroy();
+        const ctx = document.getElementById('evalChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: gameMoves.map((_,i) => i+1),
+                datasets: [{
+                    label: 'Advantage (White)',
+                    data: gameMoves.map(m => Math.max(-10, Math.min(10, m.eval/100))), // Clamp -10 to +10
+                    borderColor: '#667eea',
+                    pointRadius: 0,
+                    tension: 0.2,
+                    fill: { target: 'origin', above: 'rgba(102,126,234,0.2)', below: 'rgba(231,76,60,0.2)' }
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: {display:false} }, plugins: {legend: {display:false}} }
+        });
+    }
+
+    // --- Navigation ---
+    function navMove(index) {
+        if(typeof index === 'string') {
+            if(index === 'start') currentMoveIndex = -1;
+            else if(index === 'end') currentMoveIndex = gameMoves.length - 1;
+            else if(index === 'prev') currentMoveIndex = Math.max(-1, currentMoveIndex - 1);
+            else if(index === 'next') currentMoveIndex = Math.min(gameMoves.length - 1, currentMoveIndex + 1);
+        } else {
+            currentMoveIndex = index;
+        }
+
+        // Update Board
+        const fen = currentMoveIndex === -1 ? 'start' : gameMoves[currentMoveIndex].fen;
+        board.position(fen);
+
+        // Highlight
+        document.querySelectorAll('.move-row').forEach(e => e.classList.remove('active'));
+        if(currentMoveIndex > -1) {
+            const rowId = Math.floor(currentMoveIndex / 2);
+            const el = document.getElementById('row-' + rowId);
+            if(el) {
+                el.classList.add('active');
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            
+            // Eval Bar
+            const sc = gameMoves[currentMoveIndex].eval; // in cp
+            // Map -500..500 to 5%..95%
+            let pct = 50 + (sc / 10);
+            pct = Math.max(5, Math.min(95, pct));
+            document.getElementById('evalBarFill').style.height = pct + '%';
+            document.getElementById('evalBarFill').style.background = (sc > 0) ? '#fff' : '#444'; // Visual indicator
+        }
+    }
+
+    function stopAnalysis() {
+        currentAnalysisId++; // Kills the loop
+        if(engine) engine.terminate();
+        hideLoader();
+    }
+
+    function showLoader(txt) {
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('loadingText').innerText = txt;
+        document.getElementById('progressFill').style.width = '0%';
+    }
+    function updateLoader(pct, txt) {
+        document.getElementById('progressFill').style.width = pct + '%';
+        if(txt) document.getElementById('loadingText').innerText = txt;
+    }
+    function hideLoader() {
+        document.getElementById('loader').style.display = 'none';
+    }
+</script>
 </body>
 </html>
