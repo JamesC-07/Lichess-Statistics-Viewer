@@ -410,6 +410,12 @@
         function showByGameType(user, type) {
             const existingChart = document.getElementById('byTypeChart');
             if (existingChart) {
+                const oldChartObj = charts.find(c => c.canvas.closest('#byTypeChart'));
+                if (oldChartObj) {
+                    const index = charts.indexOf(oldChartObj);
+                    charts.splice(index, 1);
+                    oldChartObj.destroy();
+                }
                 existingChart.remove();
             }
 
@@ -442,14 +448,55 @@
                              type === 'losses' ? 'rgba(255, 71, 87, 0.8)' : 
                              'rgba(158, 158, 158, 0.8)';
                 
-                const container = createChart(
-                    `${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type`,
-                    labels,
-                    data,
-                    'bar',
-                    [color]
-                );
+                const container = document.createElement('div');
                 container.id = 'byTypeChart';
+                container.className = 'chart-container';
+                container.innerHTML = `
+                    <h3>${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type</h3>
+                    <div class="chart-wrapper">
+                        <canvas></canvas>
+                    </div>
+                `;
+                
+                // Insert after the second chart (Win/Loss/Draw)
+                const allCharts = chartsGrid.querySelectorAll('.chart-container');
+                if (allCharts.length >= 2) {
+                    allCharts[1].after(container);
+                } else {
+                    chartsGrid.appendChild(container);
+                }
+
+                const ctx = container.querySelector('canvas').getContext('2d');
+                
+                const chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type`,
+                            data: data,
+                            backgroundColor: color,
+                            borderColor: color.replace('0.8', '1'),
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                charts.push(chart);
             }
         }
 
