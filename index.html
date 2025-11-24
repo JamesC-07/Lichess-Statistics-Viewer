@@ -28,7 +28,7 @@
 
         .card { background: #1a1a1a; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-        input, textarea { flex: 1; padding: 12px; background: #0a0a0a; border: 1px solid #333; color: white; border-radius: 6px; }
+        input, textarea { flex: 1; padding: 12px; background: #0a0a0a; border: 1px solid #333; color: white; border-radius: 6px; font-family: monospace; }
         button { padding: 12px 25px; background: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         button:hover { opacity: 0.9; transform: translateY(-1px); }
 
@@ -38,24 +38,32 @@
         .board-container { display: flex; }
         #board { width: 100%; }
         
+        /* Eval Bar */
         .eval-bar-container { width: 15px; background: #333; margin-right: 5px; position: relative; border-radius: 3px; overflow: hidden; }
         .eval-bar-fill { width: 100%; background: #eee; position: absolute; bottom: 0; height: 50%; transition: height 0.3s; }
         
         .move-list { height: 300px; overflow-y: auto; background: #0a0a0a; border: 1px solid #333; padding: 5px; font-family: monospace; }
         .move-row { display: flex; padding: 4px; border-bottom: 1px solid #222; cursor: pointer; }
         .move-row:hover { background: #222; }
-        .move-row.active { background: #2c3e50; color: #ecf0f1; }
+        .move-row.active { background: #2c3e50; color: #ecf0f1; border-left: 3px solid #667eea; }
         .move-row div { flex: 1; }
         
         .stat-box { background: #222; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
         .stat-value { font-size: 1.5rem; font-weight: bold; }
         
+        /* Status Bar (Replaces overlay) */
+        .status-bar {
+            background: #222; padding: 10px; margin-bottom: 15px; border-radius: 8px; 
+            display: flex; align-items: center; justify-content: space-between;
+            border-left: 4px solid #667eea;
+        }
+        .status-text { font-weight: bold; color: #fff; }
+        .status-progress { color: #888; font-size: 0.9rem; }
+        .stop-btn { background: #e74c3c; color: white; padding: 5px 15px; font-size: 0.8rem; }
+        
         /* Utilities */
         .hidden { display: none !important; }
         .error { background: #e74c3c; color: white; padding: 10px; border-radius: 6px; display: none; margin-bottom: 15px; }
-        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 1000; flex-direction: column; }
-        .progress-bar { width: 300px; height: 8px; background: #333; margin-top: 15px; border-radius: 4px; overflow: hidden; }
-        .progress-fill { height: 100%; width: 0%; background: #667eea; transition: width 0.2s; }
         
         @media (max-width: 900px) { .analysis-grid { grid-template-columns: 1fr; } }
     </style>
@@ -93,10 +101,18 @@
                 <button onclick="loadFromUrl()">Load URL</button>
             </div>
             <textarea id="pgnInput" rows="3" placeholder="Or paste PGN..."></textarea>
-            <button onclick="startAnalysis()" style="width:100%; margin-top:10px; background:#667eea; color:white;">Analyze Game</button>
+            <button onclick="startAnalysis()" style="width:100%; margin-top:10px; background:#667eea; color:white;">Start Deep Analysis</button>
         </div>
 
         <div id="analysisDashboard" class="hidden">
+            <div id="statusBar" class="status-bar hidden">
+                <div>
+                    <div class="status-text">Analysis in Progress...</div>
+                    <div class="status-progress" id="statusProgress">Initializing Engine</div>
+                </div>
+                <button class="stop-btn" onclick="stopAnalysis()">Stop</button>
+            </div>
+
             <div class="analysis-grid">
                 <div class="board-wrapper">
                     <div class="board-container">
@@ -114,7 +130,7 @@
 
                 <div>
                     <div class="stat-box">
-                        <h4>Accuracy</h4>
+                        <h4>Accuracy (Est.)</h4>
                         <div style="display:flex; justify-content:space-around; margin-top:10px;">
                             <div>White: <div class="stat-value" id="accWhite">-</div></div>
                             <div>Black: <div class="stat-value" id="accBlack">-</div></div>
@@ -130,18 +146,12 @@
     </div>
 </div>
 
-<div class="loading-overlay" id="loader">
-    <h3 id="loadingText">Processing...</h3>
-    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    <button onclick="stopAnalysis()" style="margin-top:20px; background:#e74c3c; color:white; padding:5px 15px; font-size:0.8rem;">Cancel</button>
-</div>
-
 <script>
     // --- State & Globals ---
     let chess = new Chess();
     let board = null;
     let engine = null;
-    let currentAnalysisId = 0; // Prevents race conditions
+    let currentAnalysisId = 0;
     let gameMoves = [];
     let currentMoveIndex = -1;
     let chartInstance = null;
@@ -152,18 +162,31 @@
         document.querySelectorAll('.view-section').forEach(e => e.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
         document.getElementById(tab + 'View').classList.add('active');
-        event.target.classList.add('active'); // Assumes button click
         
-        if(tab === 'analysis' && !board) {
+        // Highlight active button
+        const btns = document.querySelectorAll('.tab-btn');
+        if(tab === 'stats') btns[0].classList.add('active');
+        if(tab === 'analysis') btns[1].classList.add('active');
+
+        // FORCE RESIZE FIX for collapsed board
+        if(tab === 'analysis') {
             setTimeout(() => {
-                board = Chessboard('board', {
-                    position: 'start',
-                    draggable: false,
-                    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
-                });
-                window.onresize = board.resize;
-            }, 100);
+                if(!board) {
+                    initBoard();
+                } else {
+                    board.resize();
+                }
+            }, 50); // Small delay allows DOM to render
         }
+    }
+
+    function initBoard() {
+        board = Chessboard('board', {
+            position: 'start',
+            draggable: false,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+        });
+        window.onresize = board.resize;
     }
 
     // --- Stats Logic ---
@@ -182,7 +205,6 @@
                 <p>Games: ${data.count.all} | Wins: ${data.count.win}</p>
             `;
 
-            // Chart
             if(statChartInstance) statChartInstance.destroy();
             const ctx = document.getElementById('ratingChart').getContext('2d');
             const variants = ['bullet', 'blitz', 'rapid', 'classical'];
@@ -210,16 +232,19 @@
         const id = input.match(/lichess\.org\/([a-zA-Z0-9]{8})/) || [null, input];
         if(!id[1]) return alert('Invalid ID');
         
-        showLoader('Downloading Game...');
+        document.getElementById('statusBar').classList.remove('hidden');
+        document.getElementById('statusProgress').innerText = "Downloading Game...";
+        
         try {
-            const res = await fetch(`https://lichess.org/game/export/${id[1]}?evals=false&clocks=false`);
+            const res = await fetch(`https://lichess.org/api/game/${id[1]}?pgnInJson=true&clocks=false&evals=false`);
             if(!res.ok) throw new Error('Failed to load');
-            const pgn = await res.text();
-            document.getElementById('pgnInput').value = pgn;
-            hideLoader();
-            startAnalysis(); // Auto-start
+            const data = await res.json();
+            document.getElementById('pgnInput').value = data.pgn;
+            
+            document.getElementById('statusBar').classList.add('hidden');
+            startAnalysis(); 
         } catch(e) {
-            hideLoader();
+            document.getElementById('statusBar').classList.add('hidden');
             alert(e.message);
         }
     }
@@ -229,7 +254,7 @@
         if(!pgn.trim()) return;
 
         // Reset
-        currentAnalysisId++; // Invalidate previous runs
+        currentAnalysisId++;
         const myId = currentAnalysisId;
         
         if(!chess.load_pgn(pgn)) return alert('Invalid PGN');
@@ -238,7 +263,6 @@
         let tempChess = new Chess();
         const history = chess.history({verbose: true});
         
-        // Build move list
         gameMoves = history.map(m => {
             tempChess.move(m);
             return { fen: tempChess.fen(), san: m.san, color: m.color, eval: 0 };
@@ -246,53 +270,60 @@
 
         if(gameMoves.length === 0) return alert('No moves found');
 
-        showLoader('Initializing Stockfish...');
+        // Setup UI
         document.getElementById('analysisDashboard').classList.remove('hidden');
+        if(!board) initBoard();
+        setTimeout(() => board.resize(), 100); // Double check resize
+        
+        document.getElementById('statusBar').classList.remove('hidden');
+        document.getElementById('statusProgress').innerText = "Starting Engine (Depth 13)...";
 
-        // Init Worker
+        // Setup Moves List (Initial Empty)
+        renderMoveList();
+
+        // Initialize Engine
         if(engine) engine.terminate();
         const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
         
         try {
-            // Try fetching for Blob (better for some browsers)
             const req = await fetch(stockfishUrl);
             const blob = await req.blob();
             engine = new Worker(URL.createObjectURL(blob));
         } catch(e) {
-            // Fallback
             engine = new Worker(stockfishUrl);
         }
 
+        // Configure Engine for strength
         engine.postMessage('uci');
+        engine.postMessage('setoption name Threads value 2'); // Use 2 threads
+        engine.postMessage('setoption name Hash value 64');   // 64MB Hash
 
-        // Run Analysis Loop
+        // Analysis Loop
         for(let i=0; i < gameMoves.length; i++) {
-            if(myId !== currentAnalysisId) return; // Stop if restarted
+            if(myId !== currentAnalysisId) return;
             
-            updateLoader(Math.round((i / gameMoves.length) * 100), `Analyzing move ${i+1}/${gameMoves.length}`);
+            // UPDATE UI LIVE
+            document.getElementById('statusProgress').innerText = `Analyzing Move ${i+1} / ${gameMoves.length}`;
+            
+            // Show move on board
+            board.position(gameMoves[i].fen);
+            highlightMoveRow(i);
             
             const score = await getMoveScore(gameMoves[i].fen, myId);
             if(myId !== currentAnalysisId) return;
 
-            // Normalize Score (Engine is always "Side to move", we want "White perspective")
-            const isWhiteTurn = gameMoves[i].color === 'w'; // White just moved, so it's Black's turn in FEN
-            // Stockfish gives score for Black.
-            // We want score for White.
-            // So if White moved, and engine says +1 (Black winning), White score is -1.
-            // If Black moved, and engine says +1 (White winning), White score is +1.
-            
-            // simpler: Stockfish gives score for "Side to Move".
-            // If FEN is Black to move, +cp means Black is winning.
-            // We want White perspective.
-            // So if side-to-move is 'b', we invert.
+            // Correct Eval Perspective
             const sideToMove = gameMoves[i].fen.split(' ')[1];
             gameMoves[i].eval = (sideToMove === 'w') ? score : -score;
+            
+            // Update Graph Live every 2 moves
+            if(i % 2 === 0) updateGraph();
         }
 
         calcStats();
-        renderUI();
-        hideLoader();
-        navMove('start');
+        updateGraph(); // Final update
+        document.getElementById('statusBar').classList.add('hidden');
+        navMove('start'); // Reset board to start
     }
 
     function getMoveScore(fen, runId) {
@@ -322,7 +353,8 @@
             let lastScore = 0;
             engine.addEventListener('message', handler);
             engine.postMessage('position fen ' + fen);
-            engine.postMessage('go movetime 100'); 
+            // STRENGTH FIX: Depth 13 is ~2200 Elo level analysis
+            engine.postMessage('go depth 13'); 
         });
     }
 
@@ -332,20 +364,12 @@
         
         gameMoves.forEach(m => {
             let diff = m.eval - prevEval;
-            // If White moved, positive diff is good.
-            // If Black moved, negative diff is good (eval goes down).
-            
             if(m.color === 'w') {
-                // White moved. Did eval go up?
-                // Actually, simple accuracy is usually based on "Centipawn Loss" (How much worse than best move)
-                // Since we aren't calculating "Best Move" separately, we just check if eval dropped.
-                // If eval dropped (e.g. 0.5 -> 0.0), White lost 50cp.
                 let loss = prevEval - m.eval;
                 if(loss < 0) loss = 0;
-                wAcc += Math.max(0, 100 - (loss / 2)); // Simple rough formula
+                wAcc += Math.max(0, 100 - (loss / 2));
                 wMoves++;
             } else {
-                // Black moved. Did eval go UP? (e.g. 0.0 -> 0.5 means Black worsened position)
                 let loss = m.eval - prevEval;
                 if(loss < 0) loss = 0;
                 bAcc += Math.max(0, 100 - (loss / 2));
@@ -358,11 +382,9 @@
         document.getElementById('accBlack').innerText = bMoves ? Math.round(bAcc / bMoves) + '%' : '-';
     }
 
-    function renderUI() {
-        // Move List
+    function renderMoveList() {
         const list = document.getElementById('moveList');
         list.innerHTML = '';
-        
         let html = '';
         for(let i=0; i<gameMoves.length; i+=2) {
             const w = gameMoves[i];
@@ -370,14 +392,36 @@
             html += `
                 <div class="move-row" id="row-${i/2}">
                     <div style="flex:0 0 30px; color:#666">${(i/2)+1}.</div>
-                    <div onclick="navMove(${i})">${w.san} <small>${w.eval/100}</small></div>
-                    ${b ? `<div onclick="navMove(${i+1})">${b.san} <small>${b.eval/100}</small></div>` : '<div></div>'}
+                    <div onclick="navMove(${i})">${w.san} <small id="eval-${i}">...</small></div>
+                    ${b ? `<div onclick="navMove(${i+1})">${b.san} <small id="eval-${i+1}">...</small></div>` : '<div></div>'}
                 </div>
             `;
         }
         list.innerHTML = html;
+    }
 
-        // Chart
+    function highlightMoveRow(index) {
+        // Update Eval Text in list
+        if(gameMoves[index].eval !== 0) {
+            const el = document.getElementById(`eval-${index}`);
+            if(el) {
+                const e = gameMoves[index].eval / 100;
+                el.innerText = e > 0 ? `+${e}` : e;
+                el.style.color = e > 0.5 ? '#2ed573' : (e < -0.5 ? '#ff4757' : '#888');
+            }
+        }
+        
+        // Scroll List
+        document.querySelectorAll('.move-row').forEach(e => e.classList.remove('active'));
+        const rowId = Math.floor(index / 2);
+        const row = document.getElementById('row-' + rowId);
+        if(row) {
+            row.classList.add('active');
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function updateGraph() {
         if(chartInstance) chartInstance.destroy();
         const ctx = document.getElementById('evalChart').getContext('2d');
         chartInstance = new Chart(ctx, {
@@ -386,18 +430,23 @@
                 labels: gameMoves.map((_,i) => i+1),
                 datasets: [{
                     label: 'Advantage (White)',
-                    data: gameMoves.map(m => Math.max(-10, Math.min(10, m.eval/100))), // Clamp -10 to +10
+                    data: gameMoves.map(m => Math.max(-10, Math.min(10, m.eval/100))),
                     borderColor: '#667eea',
                     pointRadius: 0,
                     tension: 0.2,
                     fill: { target: 'origin', above: 'rgba(102,126,234,0.2)', below: 'rgba(231,76,60,0.2)' }
                 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, scales: { x: {display:false} }, plugins: {legend: {display:false}} }
+            options: { 
+                animation: false, 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                scales: { x: {display:false} }, 
+                plugins: {legend: {display:false}} 
+            }
         });
     }
 
-    // --- Navigation ---
     function navMove(index) {
         if(typeof index === 'string') {
             if(index === 'start') currentMoveIndex = -1;
@@ -408,47 +457,24 @@
             currentMoveIndex = index;
         }
 
-        // Update Board
         const fen = currentMoveIndex === -1 ? 'start' : gameMoves[currentMoveIndex].fen;
         board.position(fen);
-
-        // Highlight
-        document.querySelectorAll('.move-row').forEach(e => e.classList.remove('active'));
+        
         if(currentMoveIndex > -1) {
-            const rowId = Math.floor(currentMoveIndex / 2);
-            const el = document.getElementById('row-' + rowId);
-            if(el) {
-                el.classList.add('active');
-                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            highlightMoveRow(currentMoveIndex);
             
-            // Eval Bar
-            const sc = gameMoves[currentMoveIndex].eval; // in cp
-            // Map -500..500 to 5%..95%
+            const sc = gameMoves[currentMoveIndex].eval;
             let pct = 50 + (sc / 10);
             pct = Math.max(5, Math.min(95, pct));
             document.getElementById('evalBarFill').style.height = pct + '%';
-            document.getElementById('evalBarFill').style.background = (sc > 0) ? '#fff' : '#444'; // Visual indicator
+            document.getElementById('evalBarFill').style.background = (sc > 0) ? '#fff' : '#444';
         }
     }
 
     function stopAnalysis() {
-        currentAnalysisId++; // Kills the loop
+        currentAnalysisId++;
         if(engine) engine.terminate();
-        hideLoader();
-    }
-
-    function showLoader(txt) {
-        document.getElementById('loader').style.display = 'flex';
-        document.getElementById('loadingText').innerText = txt;
-        document.getElementById('progressFill').style.width = '0%';
-    }
-    function updateLoader(pct, txt) {
-        document.getElementById('progressFill').style.width = pct + '%';
-        if(txt) document.getElementById('loadingText').innerText = txt;
-    }
-    function hideLoader() {
-        document.getElementById('loader').style.display = 'none';
+        document.getElementById('statusBar').classList.add('hidden');
     }
 </script>
 </body>
