@@ -183,6 +183,33 @@
             height: 300px;
         }
 
+        .expand-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .expand-btn {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .expand-btn:hover {
+            background: #764ba2;
+        }
+
+        .expand-btn.active {
+            background: #764ba2;
+        }
+
         @media (max-width: 768px) {
             .charts-grid {
                 grid-template-columns: 1fr;
@@ -227,6 +254,8 @@
         const chartsGrid = document.getElementById('chartsGrid');
 
         let charts = [];
+        let currentUser = null;
+        let currentUsername = '';
 
         usernameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -255,9 +284,11 @@
                     throw new Error('User not found');
                 }
                 const user = await userData.json();
+                currentUser = user;
+                currentUsername = username;
 
                 displayPlayerInfo(user);
-                displayCharts(user);
+                await displayCharts(user, username);
 
                 statsContainer.classList.add('show');
             } catch (error) {
@@ -305,7 +336,7 @@
             `;
         }
 
-        function displayCharts(user) {
+        async function displayCharts(user, username) {
             chartsGrid.innerHTML = '';
 
             const ratings = [];
@@ -320,7 +351,7 @@
             });
 
             if (ratings.length > 0) {
-                createChart('Ratings by Game Type', ratingLabels, ratings, 'bar');
+                createChart('Ratings by Game Type', ratingLabels, ratings, 'bar', ['rgba(102, 126, 234, 0.8)']);
             }
 
             if (user.count) {
@@ -329,7 +360,25 @@
                     user.count.loss || 0,
                     user.count.draw || 0
                 ];
-                createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut');
+                const wldContainer = createChartWithButtons('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut', ['rgba(46, 213, 115, 0.8)', 'rgba(255, 71, 87, 0.8)', 'rgba(158, 158, 158, 0.8)']);
+                
+                const expandButtons = document.createElement('div');
+                expandButtons.className = 'expand-buttons';
+                expandButtons.innerHTML = `
+                    <button class="expand-btn" data-type="wins">Show Wins by Type</button>
+                    <button class="expand-btn" data-type="losses">Show Losses by Type</button>
+                    <button class="expand-btn" data-type="draws">Show Draws by Type</button>
+                `;
+                wldContainer.appendChild(expandButtons);
+
+                expandButtons.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('expand-btn')) {
+                        const type = e.target.dataset.type;
+                        expandButtons.querySelectorAll('.expand-btn').forEach(btn => btn.classList.remove('active'));
+                        e.target.classList.add('active');
+                        showByGameType(user, type);
+                    }
+                });
             }
 
             const gameModes = [];
@@ -342,24 +391,126 @@
             });
 
             if (gameModes.length > 0) {
-                createChart('Games by Type', gameModeLabels, gameModes, 'pie');
+                createChart('Games by Type', gameModeLabels, gameModes, 'pie', null);
             }
 
-            const progressData = [];
-            const progressLabels = [];
-            gameTypes.forEach(type => {
-                if (user.perfs && user.perfs[type] && user.perfs[type].prog !== undefined) {
-                    progressLabels.push(type.charAt(0).toUpperCase() + type.slice(1));
-                    progressData.push(user.perfs[type].prog);
-                }
-            });
+            try {
+                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=100&pgnInJson=true&clocks=true&evals=true&opening=true`);
+                const gamesText = await gamesResponse.text();
+                const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
 
-            if (progressData.length > 0) {
-                createChart('Rating Progress', progressLabels, progressData, 'bar');
+                if (games.length > 0) {
+                    displayAdvancedStats(games, user);
+                }
+            } catch (error) {
+                console.error('Error fetching games:', error);
             }
         }
 
-        function createChart(title, labels, data, type) {
+        function showByGameType(user, type) {
+            const existingChart = document.getElementById('byTypeChart');
+            if (existingChart) {
+                existingChart.remove();
+            }
+
+            const gameTypes = ['bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
+            const labels = [];
+            const data = [];
+            
+            gameTypes.forEach(gameType => {
+                if (user.perfs && user.perfs[gameType]) {
+                    const perf = user.perfs[gameType];
+                    let value = 0;
+                    
+                    if (type === 'wins' && perf.win !== undefined) {
+                        value = perf.win;
+                    } else if (type === 'losses' && perf.loss !== undefined) {
+                        value = perf.loss;
+                    } else if (type === 'draws' && perf.draw !== undefined) {
+                        value = perf.draw;
+                    }
+                    
+                    if (value > 0) {
+                        labels.push(gameType.charAt(0).toUpperCase() + gameType.slice(1));
+                        data.push(value);
+                    }
+                }
+            });
+
+            if (data.length > 0) {
+                const color = type === 'wins' ? 'rgba(46, 213, 115, 0.8)' : 
+                             type === 'losses' ? 'rgba(255, 71, 87, 0.8)' : 
+                             'rgba(158, 158, 158, 0.8)';
+                
+                const container = createChart(
+                    `${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type`,
+                    labels,
+                    data,
+                    'bar',
+                    [color]
+                );
+                container.id = 'byTypeChart';
+            }
+        }
+
+        function displayAdvancedStats(games, user) {
+            const accuracyByType = {};
+            const timeThinkingData = {};
+            const openingStats = {};
+
+            games.forEach(game => {
+                const isWhite = game.players.white.user && game.players.white.user.name.toLowerCase() === user.username.toLowerCase();
+                const player = isWhite ? game.players.white : game.players.black;
+                const gameType = game.speed || 'unknown';
+
+                if (player.analysis && player.analysis.acpl !== undefined) {
+                    if (!accuracyByType[gameType]) {
+                        accuracyByType[gameType] = [];
+                    }
+                    const accuracy = Math.max(0, 100 - player.analysis.acpl / 10);
+                    accuracyByType[gameType].push(accuracy);
+                }
+
+                if (game.opening && game.opening.name) {
+                    const opening = game.opening.name;
+                    if (!openingStats[opening]) {
+                        openingStats[opening] = { wins: 0, losses: 0, draws: 0 };
+                    }
+                    
+                    const result = isWhite ? 
+                        (game.winner === 'white' ? 'wins' : game.winner === 'black' ? 'losses' : 'draws') :
+                        (game.winner === 'black' ? 'wins' : game.winner === 'white' ? 'losses' : 'draws');
+                    
+                    openingStats[opening][result]++;
+                }
+            });
+
+            const accLabels = Object.keys(accuracyByType);
+            const accData = accLabels.map(type => {
+                const avg = accuracyByType[type].reduce((a, b) => a + b, 0) / accuracyByType[type].length;
+                return Math.round(avg);
+            });
+
+            if (accData.length > 0) {
+                createChart('Average Accuracy by Game Type', accLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)), accData, 'bar', ['rgba(102, 126, 234, 0.8)']);
+            }
+
+            const topOpenings = Object.entries(openingStats)
+                .sort((a, b) => (b[1].wins + b[1].losses + b[1].draws) - (a[1].wins + a[1].losses + a[1].draws))
+                .slice(0, 5);
+
+            if (topOpenings.length > 0) {
+                const openingLabels = topOpenings.map(([name]) => name.length > 20 ? name.substring(0, 20) + '...' : name);
+                const openingWinrates = topOpenings.map(([_, stats]) => {
+                    const total = stats.wins + stats.losses + stats.draws;
+                    return Math.round((stats.wins / total) * 100);
+                });
+
+                createChart('Winrate on Top 5 Openings', openingLabels, openingWinrates, 'bar', ['rgba(46, 213, 115, 0.8)']);
+            }
+        }
+
+        function createChartWithButtons(title, labels, data, type, colors) {
             const container = document.createElement('div');
             container.className = 'chart-container';
             container.innerHTML = `
@@ -371,14 +522,6 @@
             chartsGrid.appendChild(container);
 
             const ctx = container.querySelector('canvas').getContext('2d');
-            const colors = [
-                'rgba(102, 126, 234, 0.8)',
-                'rgba(118, 75, 162, 0.8)',
-                'rgba(255, 71, 87, 0.8)',
-                'rgba(46, 213, 115, 0.8)',
-                'rgba(255, 177, 66, 0.8)',
-                'rgba(72, 219, 251, 0.8)'
-            ];
 
             const chart = new Chart(ctx, {
                 type: type,
@@ -387,8 +530,8 @@
                     datasets: [{
                         label: title,
                         data: data,
-                        backgroundColor: colors,
-                        borderColor: colors.map(c => c.replace('0.8', '1')),
+                        backgroundColor: colors || ['rgba(102, 126, 234, 0.8)', 'rgba(118, 75, 162, 0.8)', 'rgba(255, 71, 87, 0.8)'],
+                        borderColor: colors ? colors.map(c => c.replace('0.8', '1')) : ['rgba(102, 126, 234, 1)', 'rgba(118, 75, 162, 1)', 'rgba(255, 71, 87, 1)'],
                         borderWidth: 2
                     }]
                 },
@@ -410,6 +553,62 @@
             });
 
             charts.push(chart);
+            return container;
+        }
+
+        function createChart(title, labels, data, type, colors) {
+            const container = document.createElement('div');
+            container.className = 'chart-container';
+            container.innerHTML = `
+                <h3>${title}</h3>
+                <div class="chart-wrapper">
+                    <canvas></canvas>
+                </div>
+            `;
+            chartsGrid.appendChild(container);
+
+            const ctx = container.querySelector('canvas').getContext('2d');
+            
+            const defaultColors = [
+                'rgba(102, 126, 234, 0.8)',
+                'rgba(118, 75, 162, 0.8)',
+                'rgba(255, 71, 87, 0.8)',
+                'rgba(46, 213, 115, 0.8)',
+                'rgba(255, 177, 66, 0.8)',
+                'rgba(72, 219, 251, 0.8)'
+            ];
+
+            const chart = new Chart(ctx, {
+                type: type,
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: title,
+                        data: data,
+                        backgroundColor: colors || defaultColors,
+                        borderColor: (colors || defaultColors).map(c => c.replace('0.8', '1')),
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: type === 'doughnut' || type === 'pie',
+                            position: 'bottom'
+                        }
+                    },
+                    scales: type === 'bar' ? {
+                        y: {
+                            beginAtZero: true
+                        }
+                    } : {}
+                }
+            });
+
+            charts.push(chart);
+            return container;
         }
     </script>
 </body>
