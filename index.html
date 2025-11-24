@@ -210,6 +210,57 @@
             background: #764ba2;
         }
 
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .progress-overlay.show {
+            display: flex;
+        }
+
+        .progress-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .progress-content h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
         @media (max-width: 768px) {
             .charts-grid {
                 grid-template-columns: 1fr;
@@ -242,6 +293,16 @@
             <div class="player-info" id="playerInfo"></div>
             <div class="charts-grid" id="chartsGrid"></div>
         </div>
+
+        <div class="progress-overlay" id="progressOverlay">
+            <div class="progress-content">
+                <h3>Loading Game Data</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+                <p id="progressText">Fetching games...</p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -257,6 +318,9 @@
         let currentUser = null;
         let currentUsername = '';
         let cachedGames = null;
+        const progressOverlay = document.getElementById('progressOverlay');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
 
         usernameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -397,16 +461,46 @@
             }
 
             try {
+                progressOverlay.classList.add('show');
+                progressFill.style.width = '10%';
+                progressFill.textContent = '10%';
+                progressText.textContent = 'Fetching game data...';
+
                 const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=300&pgnInJson=true&opening=true`);
+                
+                progressFill.style.width = '40%';
+                progressFill.textContent = '40%';
+                progressText.textContent = 'Downloading games...';
+
                 const gamesText = await gamesResponse.text();
+                
+                progressFill.style.width = '70%';
+                progressFill.textContent = '70%';
+                progressText.textContent = 'Processing game data...';
+
                 const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
                 cachedGames = games;
+
+                progressFill.style.width = '90%';
+                progressFill.textContent = '90%';
+                progressText.textContent = 'Analyzing statistics...';
 
                 if (games.length > 0) {
                     displayAdvancedStats(games, user);
                 }
+
+                progressFill.style.width = '100%';
+                progressFill.textContent = '100%';
+                progressText.textContent = 'Complete!';
+
+                setTimeout(() => {
+                    progressOverlay.classList.remove('show');
+                    progressFill.style.width = '0%';
+                }, 500);
             } catch (error) {
                 console.error('Error fetching games:', error);
+                progressOverlay.classList.remove('show');
+                progressFill.style.width = '0%';
             }
         }
 
