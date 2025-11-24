@@ -360,7 +360,7 @@
                     user.count.loss || 0,
                     user.count.draw || 0
                 ];
-                const wldContainer = createChartWithButtons('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut', ['rgba(46, 213, 115, 0.8)', 'rgba(255, 71, 87, 0.8)', 'rgba(158, 158, 158, 0.8)']);
+                const wldContainer = createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut', ['rgba(46, 213, 115, 0.8)', 'rgba(255, 71, 87, 0.8)', 'rgba(158, 158, 158, 0.8)']);
                 
                 const expandButtons = document.createElement('div');
                 expandButtons.className = 'expand-buttons';
@@ -395,7 +395,7 @@
             }
 
             try {
-                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=10000&pgnInJson=true&clocks=true&evals=true&opening=true`);
+                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=100&pgnInJson=true&opening=true`);
                 const gamesText = await gamesResponse.text();
                 const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
 
@@ -422,12 +422,12 @@
                     const perf = user.perfs[gameType];
                     let value = 0;
                     
-                    if (type === 'wins' && perf.win !== undefined) {
-                        value = perf.win;
-                    } else if (type === 'losses' && perf.loss !== undefined) {
-                        value = perf.loss;
-                    } else if (type === 'draws' && perf.draw !== undefined) {
-                        value = perf.draw;
+                    if (type === 'wins') {
+                        value = perf.win || 0;
+                    } else if (type === 'losses') {
+                        value = perf.loss || 0;
+                    } else if (type === 'draws') {
+                        value = perf.draw || 0;
                     }
                     
                     if (value > 0) {
@@ -454,22 +454,10 @@
         }
 
         function displayAdvancedStats(games, user) {
-            const accuracyByType = {};
-            const timeThinkingData = {};
             const openingStats = {};
 
             games.forEach(game => {
                 const isWhite = game.players.white.user && game.players.white.user.name.toLowerCase() === user.username.toLowerCase();
-                const player = isWhite ? game.players.white : game.players.black;
-                const gameType = game.speed || 'unknown';
-
-                if (player.analysis && player.analysis.acpl !== undefined) {
-                    if (!accuracyByType[gameType]) {
-                        accuracyByType[gameType] = [];
-                    }
-                    const accuracy = Math.max(0, 100 - player.analysis.acpl / 10);
-                    accuracyByType[gameType].push(accuracy);
-                }
 
                 if (game.opening && game.opening.name) {
                     const opening = game.opening.name;
@@ -485,16 +473,6 @@
                 }
             });
 
-            const accLabels = Object.keys(accuracyByType);
-            const accData = accLabels.map(type => {
-                const avg = accuracyByType[type].reduce((a, b) => a + b, 0) / accuracyByType[type].length;
-                return Math.round(avg);
-            });
-
-            if (accData.length > 0) {
-                createChart('Average Accuracy by Game Type', accLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)), accData, 'bar', ['rgba(102, 126, 234, 0.8)']);
-            }
-
             const topOpenings = Object.entries(openingStats)
                 .sort((a, b) => (b[1].wins + b[1].losses + b[1].draws) - (a[1].wins + a[1].losses + a[1].draws))
                 .slice(0, 5);
@@ -508,52 +486,6 @@
 
                 createChart('Winrate on Top 5 Openings', openingLabels, openingWinrates, 'bar', ['rgba(46, 213, 115, 0.8)']);
             }
-        }
-
-        function createChartWithButtons(title, labels, data, type, colors) {
-            const container = document.createElement('div');
-            container.className = 'chart-container';
-            container.innerHTML = `
-                <h3>${title}</h3>
-                <div class="chart-wrapper">
-                    <canvas></canvas>
-                </div>
-            `;
-            chartsGrid.appendChild(container);
-
-            const ctx = container.querySelector('canvas').getContext('2d');
-
-            const chart = new Chart(ctx, {
-                type: type,
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: title,
-                        data: data,
-                        backgroundColor: colors || ['rgba(102, 126, 234, 0.8)', 'rgba(118, 75, 162, 0.8)', 'rgba(255, 71, 87, 0.8)'],
-                        borderColor: colors ? colors.map(c => c.replace('0.8', '1')) : ['rgba(102, 126, 234, 1)', 'rgba(118, 75, 162, 1)', 'rgba(255, 71, 87, 1)'],
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: type === 'doughnut' || type === 'pie',
-                            position: 'bottom'
-                        }
-                    },
-                    scales: type === 'bar' ? {
-                        y: {
-                            beginAtZero: true
-                        }
-                    } : {}
-                }
-            });
-
-            charts.push(chart);
-            return container;
         }
 
         function createChart(title, labels, data, type, colors) {
