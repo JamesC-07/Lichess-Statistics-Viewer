@@ -408,9 +408,10 @@
         }
 
         function showByGameType(user, type) {
+            // Remove existing chart if any
             const existingChart = document.getElementById('byTypeChart');
             if (existingChart) {
-                const oldChartObj = charts.find(c => c.canvas.closest('#byTypeChart'));
+                const oldChartObj = charts.find(c => c.canvas && c.canvas.closest('#byTypeChart'));
                 if (oldChartObj) {
                     const index = charts.indexOf(oldChartObj);
                     charts.splice(index, 1);
@@ -442,6 +443,13 @@
                     }
                 }
             });
+
+            // Create a debug message
+            const debugDiv = document.createElement('div');
+            debugDiv.style.cssText = 'background: yellow; color: black; padding: 10px; margin: 10px; border-radius: 5px;';
+            debugDiv.textContent = `Debug: Found ${data.length} game types with ${type}. Data: ${JSON.stringify(data)}`;
+            chartsGrid.appendChild(debugDiv);
+            setTimeout(() => debugDiv.remove(), 5000);
 
             if (data.length > 0) {
                 const color = type === 'wins' ? 'rgba(46, 213, 115, 0.8)' : 
@@ -497,6 +505,8 @@
                 });
 
                 charts.push(chart);
+            } else {
+                alert('No data found for ' + type);
             }
         }
 
