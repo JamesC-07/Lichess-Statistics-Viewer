@@ -183,33 +183,6 @@
             height: 300px;
         }
 
-        .expand-buttons {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-top: 15px;
-            flex-wrap: wrap;
-        }
-
-        .expand-btn {
-            padding: 8px 16px;
-            font-size: 0.9rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .expand-btn:hover {
-            background: #764ba2;
-        }
-
-        .expand-btn.active {
-            background: #764ba2;
-        }
-
         .progress-overlay {
             position: fixed;
             top: 0;
@@ -416,8 +389,18 @@
                 }
             });
 
+            const ratingColors = ratingLabels.map(label => {
+                const type = label.toLowerCase();
+                if (type === 'bullet') return 'rgba(139, 0, 0, 0.8)';
+                if (type === 'blitz') return 'rgba(220, 20, 60, 0.8)';
+                if (type === 'rapid') return 'rgba(255, 140, 0, 0.8)';
+                if (type === 'classical') return 'rgba(255, 215, 0, 0.8)';
+                if (type === 'correspondence') return 'rgba(128, 128, 128, 0.8)';
+                return 'rgba(102, 126, 234, 0.8)';
+            });
+
             if (ratings.length > 0) {
-                createChart('Ratings by Game Type', ratingLabels, ratings, 'bar', ['rgba(102, 126, 234, 0.8)']);
+                createChart('Ratings by Game Type', ratingLabels, ratings, 'bar', ratingColors);
             }
 
             if (user.count) {
@@ -426,25 +409,7 @@
                     user.count.loss || 0,
                     user.count.draw || 0
                 ];
-                const wldContainer = createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut', ['rgba(46, 213, 115, 0.8)', 'rgba(255, 71, 87, 0.8)', 'rgba(158, 158, 158, 0.8)']);
-                
-                const expandButtons = document.createElement('div');
-                expandButtons.className = 'expand-buttons';
-                expandButtons.innerHTML = `
-                    <button class="expand-btn" data-type="wins">Show Wins by Type</button>
-                    <button class="expand-btn" data-type="losses">Show Losses by Type</button>
-                    <button class="expand-btn" data-type="draws">Show Draws by Type</button>
-                `;
-                wldContainer.appendChild(expandButtons);
-
-                expandButtons.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('expand-btn')) {
-                        const type = e.target.dataset.type;
-                        expandButtons.querySelectorAll('.expand-btn').forEach(btn => btn.classList.remove('active'));
-                        e.target.classList.add('active');
-                        showByGameType(user, type);
-                    }
-                });
+                createChart('Win/Loss/Draw', ['Wins', 'Losses', 'Draws'], gameResults, 'doughnut', ['rgba(46, 213, 115, 0.8)', 'rgba(255, 71, 87, 0.8)', 'rgba(158, 158, 158, 0.8)']);
             }
 
             const gameModes = [];
@@ -457,26 +422,41 @@
             });
 
             if (gameModes.length > 0) {
-                createChart('Games by Type', gameModeLabels, gameModes, 'pie', null);
+                const typeColors = gameModeLabels.map(label => {
+                    const type = label.toLowerCase();
+                    if (type === 'bullet') return 'rgba(139, 0, 0, 0.8)';
+                    if (type === 'blitz') return 'rgba(220, 20, 60, 0.8)';
+                    if (type === 'rapid') return 'rgba(255, 140, 0, 0.8)';
+                    if (type === 'classical') return 'rgba(255, 215, 0, 0.8)';
+                    if (type === 'correspondence') return 'rgba(128, 128, 128, 0.8)';
+                    return 'rgba(102, 126, 234, 0.8)';
+                });
+                createChart('Games by Type', gameModeLabels, gameModes, 'pie', typeColors);
             }
 
             try {
                 progressOverlay.classList.add('show');
-                progressFill.style.width = '10%';
-                progressFill.textContent = '10%';
-                progressText.textContent = 'Fetching game data...';
+                progressFill.style.width = '0%';
+                progressFill.textContent = '0%';
+                progressText.textContent = 'Starting download...';
+
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                progressFill.style.width = '20%';
+                progressFill.textContent = '20%';
+                progressText.textContent = 'Connecting to Lichess API...';
 
                 const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=300&pgnInJson=true&opening=true`);
                 
-                progressFill.style.width = '40%';
-                progressFill.textContent = '40%';
-                progressText.textContent = 'Downloading games...';
+                progressFill.style.width = '50%';
+                progressFill.textContent = '50%';
+                progressText.textContent = 'Downloading game data...';
 
                 const gamesText = await gamesResponse.text();
                 
-                progressFill.style.width = '70%';
-                progressFill.textContent = '70%';
-                progressText.textContent = 'Processing game data...';
+                progressFill.style.width = '75%';
+                progressFill.textContent = '75%';
+                progressText.textContent = 'Processing games...';
 
                 const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
                 cachedGames = games;
@@ -501,133 +481,6 @@
                 console.error('Error fetching games:', error);
                 progressOverlay.classList.remove('show');
                 progressFill.style.width = '0%';
-            }
-        }
-
-        async function showByGameType(user, type) {
-            const existingChart = document.getElementById('byTypeChart');
-            if (existingChart) {
-                const oldChartObj = charts.find(c => c.canvas && c.canvas.closest('#byTypeChart'));
-                if (oldChartObj) {
-                    const index = charts.indexOf(oldChartObj);
-                    charts.splice(index, 1);
-                    oldChartObj.destroy();
-                }
-                existingChart.remove();
-            }
-
-            if (!cachedGames || cachedGames.length === 0) {
-                alert('Loading game data, please try again in a moment...');
-                return;
-            }
-
-            const typeMapping = {
-                'bullet': 'bullet',
-                'blitz': 'blitz',
-                'rapid': 'rapid',
-                'classical': 'classical',
-                'correspondence': 'correspondence'
-            };
-
-            const statsByType = {};
-            
-            cachedGames.forEach(game => {
-                const speed = game.speed;
-                if (!typeMapping[speed]) return;
-
-                if (!statsByType[speed]) {
-                    statsByType[speed] = { wins: 0, losses: 0, draws: 0 };
-                }
-
-                const isWhite = game.players.white.user && 
-                               game.players.white.user.name.toLowerCase() === currentUsername.toLowerCase();
-
-                if (game.status === 'draw' || game.status === 'stalemate') {
-                    statsByType[speed].draws++;
-                } else if (game.winner) {
-                    if ((game.winner === 'white' && isWhite) || (game.winner === 'black' && !isWhite)) {
-                        statsByType[speed].wins++;
-                    } else {
-                        statsByType[speed].losses++;
-                    }
-                }
-            });
-
-            const labels = [];
-            const data = [];
-            
-            Object.keys(statsByType).forEach(gameType => {
-                const stats = statsByType[gameType];
-                let value = 0;
-                
-                if (type === 'wins') value = stats.wins;
-                else if (type === 'losses') value = stats.losses;
-                else if (type === 'draws') value = stats.draws;
-                
-                if (value > 0) {
-                    labels.push(gameType.charAt(0).toUpperCase() + gameType.slice(1));
-                    data.push(value);
-                }
-            });
-
-            if (data.length > 0) {
-                const color = type === 'wins' ? 'rgba(46, 213, 115, 0.8)' : 
-                             type === 'losses' ? 'rgba(255, 71, 87, 0.8)' : 
-                             'rgba(158, 158, 158, 0.8)';
-                
-                const container = document.createElement('div');
-                container.id = 'byTypeChart';
-                container.className = 'chart-container';
-                container.innerHTML = `
-                    <h3>${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type</h3>
-                    <div class="chart-wrapper">
-                        <canvas></canvas>
-                    </div>
-                `;
-                
-                const allCharts = chartsGrid.querySelectorAll('.chart-container');
-                if (allCharts.length >= 2) {
-                    allCharts[1].after(container);
-                } else {
-                    chartsGrid.appendChild(container);
-                }
-
-                const ctx = container.querySelector('canvas').getContext('2d');
-                
-                const chart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: `${type.charAt(0).toUpperCase() + type.slice(1)} by Game Type`,
-                            data: data,
-                            backgroundColor: color,
-                            borderColor: color.replace('0.8', '1'),
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    stepSize: 1
-                                }
-                            }
-                        }
-                    }
-                });
-
-                charts.push(chart);
-            } else {
-                alert(`No ${type} found in the last 300 games for any game type`);
             }
         }
 
