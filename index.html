@@ -395,7 +395,7 @@
             }
 
             try {
-                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=100&pgnInJson=true&clocks=true&evals=true&opening=true`);
+                const gamesResponse = await fetch(`https://lichess.org/api/games/user/${username}?max=10000&pgnInJson=true&clocks=true&evals=true&opening=true`);
                 const gamesText = await gamesResponse.text();
                 const games = gamesText.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
 
